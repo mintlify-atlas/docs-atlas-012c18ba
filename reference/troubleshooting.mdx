@@ -1,0 +1,153 @@
+---
+title: Troubleshooting
+description: Solutions for common issues encountered when running TypingClub Bot.
+---
+
+<AccordionGroup>
+  <Accordion title='"Next level button not found" logged to the console'>
+    **Symptom**: The bot completes a lesson but the console prints `Next level button not found.` and no further levels are attempted.
+
+    **Cause**: `goToNextLevel()` locates the navigation button by searching for a `<span>` whose text content is exactly `→`:
+
+    ```javascript
+    const nextButton = Array.from(document.querySelectorAll('span')).find(
+      el => el.textContent === '→'
+    );
+    if (nextButton) {
+      nextButton.click();
+      console.log('Moving to next level...');
+    } else {
+      console.log('Next level button not found.');
+    }
+    ```
+
+    Some lesson types — video lessons, assessment levels, and intro screens — render a different post-lesson UI that does not include this specific `<span>`. The selector therefore finds nothing.
+
+    **Fix**:
+    1. Manually click through until you reach the next standard text-typing lesson.
+    2. Wait for the lesson to fully load.
+    3. Re-run `autoPlay()` in the console.
+
+    <Tip>You can paste just `autoPlay();` in the console to restart the bot without re-pasting the full script, as long as the tab has not been refreshed.</Tip>
+  </Accordion>
+
+  <Accordion title="Result page or score screen never appears">
+    **Symptom**: The bot finishes typing all characters but the lesson result/score screen does not appear. The lesson appears to hang.
+
+    **Cause**: `minDelay` and/or `maxDelay` is set too low. When keystrokes arrive faster than TypingClub can process them, the site does not transition to the results view.
+
+    The script includes this comment for exactly this reason:
+
+    ```javascript
+    // NOTE: When delay (in ms between two strokes) is too low, the site might
+    // bug out and the result page will not be shown
+    const minDelay = 60;
+    const maxDelay = 60;
+    ```
+
+    **Fix**: Restore both values to `60` or higher before pasting the script:
+
+    ```javascript
+    const minDelay = 60;
+    const maxDelay = 60;
+    ```
+
+    <Warning>Do not set either value below approximately 60 ms. The exact threshold may vary by device speed and network latency, but 60 ms is the tested safe minimum.</Warning>
+  </Accordion>
+
+  <Accordion title="Script stops mid-lesson">
+    **Symptom**: The bot starts typing but stops partway through a lesson without completing it or logging anything useful.
+
+    **Cause**: The `autoPlay()` function is an `async` loop:
+
+    ```javascript
+    async function autoPlay() {
+      const chrs = getTargetCharacters();
+      // ...
+      for (let i = 0; i < chrs.length; ++i) {
+        const c = chrs[i];
+        recordKey(c);
+        await sleep(Math.random() * (maxDelay - minDelay) + minDelay);
+      }
+      goToNextLevel();
+    }
+    ```
+
+    If the page navigates away mid-loop (e.g., due to a timeout, a browser back navigation, or the tab losing context), the async loop is interrupted and does not resume.
+
+    **Fix**:
+    1. Navigate back to the level where the bot stopped.
+    2. Wait for the lesson UI to load.
+    3. Re-paste the full script and press **Enter**.
+
+    <Note>If the lesson advanced partially, TypingClub may restart it from the beginning. This is expected — the bot will simply re-type the lesson from the start.</Note>
+  </Accordion>
+
+  <Accordion title='`window.core` is undefined / TypeError'>
+    **Symptom**: Pasting the script immediately throws an error similar to:
+
+    ```
+    TypeError: Cannot read properties of undefined (reading 'record_keydown_time')
+    ```
+
+    or:
+
+    ```
+    TypeError: window.core is undefined
+    ```
+
+    **Cause**: The `recordKey()` function calls `window.core.record_keydown_time()` directly:
+
+    ```javascript
+    function recordKey(chr) {
+      // send it straight to the internal API
+      window.core.record_keydown_time(chr);
+    }
+    ```
+
+    `window.core` is only defined when a TypingClub typing lesson is fully loaded. The error occurs when:
+    - The script is pasted before the lesson finishes loading.
+    - The script is run on the wrong page (e.g., the course map, the dashboard, or a video lesson).
+
+    **Fix**:
+    1. Make sure you are on an actual typing lesson page — the animated keyboard and letter tokens should be visible.
+    2. Wait a few seconds after the lesson appears before pasting.
+    3. Verify in the console that `window.core` exists by typing `window.core` and pressing **Enter** — it should return an object, not `undefined`.
+
+    <Warning>Running the script on the course map or any non-lesson page will always produce this error. Navigate into a lesson first.</Warning>
+  </Accordion>
+
+  <Accordion title="Characters are typed but score is 0 or the lesson does not complete">
+    **Symptom**: The bot runs without errors, the delay loop executes, but the lesson does not register any progress and the score remains 0.
+
+    **Cause**: `getTargetCharacters()` uses a specific CSS selector to read the characters to type:
+
+    ```javascript
+    function getTargetCharacters() {
+      const els = Array.from(
+        document.querySelectorAll('.token span.token_unit')
+      );
+      // ...
+    }
+    ```
+
+    If this selector matches no elements, `chrs` will be an empty array. The bot immediately calls `goToNextLevel()` rather than typing anything:
+
+    ```javascript
+    if (chrs.length === 0) {
+      // No characters to type, move to the next level
+      goToNextLevel();
+      return;
+    }
+    ```
+
+    This can happen if TypingClub has changed its DOM structure so that lesson characters no longer live inside `.token span.token_unit`.
+
+    **Fix**:
+    1. Open DevTools and switch to the **Elements** tab.
+    2. Search for `.token_unit` and verify elements with that class exist inside `.token` containers.
+    3. If the structure has changed, update the selector in `getTargetCharacters()` to match the current DOM.
+
+    <Note>You can test the selector directly in the console before running the bot: `document.querySelectorAll('.token span.token_unit')` should return a non-empty NodeList when a lesson is active.</Note>
+  </Accordion>
+</AccordionGroup>

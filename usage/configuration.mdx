@@ -1,0 +1,98 @@
+---
+title: 'Configuration'
+description: 'All configurable constants in the Typing Club Bot script, including delay settings and the key override map.'
+---
+
+The bot has two configuration points at the top of the file: the delay constants that control typing speed, and the `keyOverrides` map that normalizes special characters. Edit these before pasting the script into the console.
+
+```javascript
+const minDelay = 60;
+const maxDelay = 60;
+
+const keyOverrides = {
+  [String.fromCharCode(160)]: ' '    // convert hardspace to normal space
+};
+```
+
+## `minDelay` and `maxDelay`
+
+These two constants, defined on lines 11–12, control the delay between consecutive keystrokes in milliseconds.
+
+The actual delay for each keystroke is calculated as:
+
+```javascript
+Math.random() * (maxDelay - minDelay) + minDelay
+```
+
+- When `minDelay === maxDelay`, the delay is always exactly that value (no randomness).
+- When `minDelay < maxDelay`, the delay is a uniformly distributed random value in the range `[minDelay, maxDelay)`.
+
+<Warning>
+  Lowering either value below approximately **60 ms** can cause TypingClub's result page to not appear after completing a level. The comment in the source notes this directly: *"When delay (in ms between two strokes) is too low, the site might bug out and the result page will not be shown."* If the result page does not appear, `goToNextLevel()` cannot find the `→` button and the bot will stop.
+</Warning>
+
+### Delay settings reference
+
+| `minDelay` | `maxDelay` | Effective range | Notes |
+|---|---|---|---|
+| `60` | `60` | Always 60 ms | Default. Stable, uniform speed. |
+| `60` | `120` | 60–120 ms | Adds natural-looking variation. |
+| `80` | `150` | 80–150 ms | More human-like rhythm; safer margin. |
+| `30` | `60` | 30–60 ms | **Risky.** May trigger the result-page bug. |
+| `10` | `30` | 10–30 ms | **Not recommended.** Very likely to break. |
+
+### Modifying the delay
+
+Change the values at the top of the script before pasting:
+
+```javascript
+// Slower, more human-like typing with variation
+const minDelay = 80;
+const maxDelay = 150;
+
+const keyOverrides = {
+  [String.fromCharCode(160)]: ' '
+};
+```
+
+<Tip>
+  Start with `minDelay = 80` and `maxDelay = 150` when experimenting. The added variation makes the timing look more natural, and the higher floor keeps the result page appearing reliably.
+</Tip>
+
+## `keyOverrides`
+
+Defined on lines 14–16, `keyOverrides` is a plain object used as a lookup table. Before each character is passed to `recordKey`, the bot checks whether an override exists:
+
+```javascript
+.map(c => keyOverrides.hasOwnProperty(c) ? keyOverrides[c] : c)
+```
+
+If `c` is a key in `keyOverrides`, the mapped value is used instead. Otherwise, the character passes through unchanged.
+
+### Default override
+
+The only built-in override replaces the non-breaking space character (Unicode code point U+00A0, HTML `&nbsp;`) with a regular space:
+
+```javascript
+const keyOverrides = {
+  [String.fromCharCode(160)]: ' '    // convert hardspace to normal space
+};
+```
+
+TypingClub's DOM sometimes contains `&nbsp;` in lesson text. Without this override, the bot would pass the non-breaking space character to `record_keydown_time`, which may not be recognized as a valid keystroke.
+
+### Adding custom overrides
+
+To map additional characters, add more entries to the object using the same pattern:
+
+```javascript
+const keyOverrides = {
+  [String.fromCharCode(160)]: ' ',   // non-breaking space → regular space
+  [String.fromCharCode(8217)]: "'",  // right single quotation mark → apostrophe
+  [String.fromCharCode(8211)]: '-',  // en dash → hyphen
+};
+```
+
+<Note>
+  Use `String.fromCharCode(n)` for characters that are difficult to type or paste directly. You can find the code point for any character using `'character'.charCodeAt(0)` in the browser console.
+</Note>

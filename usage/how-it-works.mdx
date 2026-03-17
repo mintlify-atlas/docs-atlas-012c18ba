@@ -1,0 +1,155 @@
+---
+title: 'How it works'
+description: 'A technical walkthrough of how the Typing Club Bot extracts characters, injects keystrokes, and advances through levels automatically.'
+---
+
+The bot is a self-contained script you paste into the browser console. It reads the current level's characters directly from the DOM, injects them into TypingClub's internal API, waits a randomized delay between each keystroke, and then automatically navigates to the next level — repeating the cycle until there are no more levels.
+
+## DOM character extraction
+
+The `getTargetCharacters()` function reads every character the current level expects you to type.
+
+```javascript
+function getTargetCharacters() {
+  const els = Array.from(document.querySelectorAll('.token span.token_unit'));
+  const chrs = els
+    .map(el => {
+      if (el.firstChild?.classList?.contains('_enter')) {
+        return '\n';
+      }
+      let text = el.textContent[0];
+      return text;
+    })
+    .map(c => keyOverrides.hasOwnProperty(c) ? keyOverrides[c] : c);
+  return chrs;
+}
+```
+
+The function does three things in sequence:
+
+1. **Query the DOM** — it selects every `.token span.token_unit` element. Each of these elements represents a single character the lesson expects you to type.
+2. **Map to characters** — for each element, it checks whether the first child has the `_enter` CSS class. If it does, the character is a newline (`\n`). Otherwise, it takes the first character of the element's `textContent`.
+3. **Normalize overrides** — each character is passed through `keyOverrides`. The only default override maps the non-breaking space (Unicode char code 160) to a regular space, since TypingClub sometimes uses `&nbsp;` in its markup.
+
+```javascript
+const keyOverrides = {
+  [String.fromCharCode(160)]: ' '    // convert hardspace to normal space
+};
+```
+
+<Info>
+  `String.fromCharCode(160)` produces the non-breaking space character (`\u00A0`). Using it as a computed property key means the map entry is keyed on the actual character, not the escape sequence.
+</Info>
+
+## Keystroke injection
+
+Instead of dispatching synthetic `KeyboardEvent` objects to the DOM, the bot calls TypingClub's own internal JavaScript function directly:
+
+```javascript
+function recordKey(chr) {
+  window.core.record_keydown_time(chr);
+}
+```
+
+`window.core` is TypingClub's global application object, and `record_keydown_time` is the method the site itself calls whenever you press a real key. By calling it directly the bot bypasses the browser's event system entirely — there is nothing to intercept, throttle, or block at the DOM level.
+
+<Note>
+  Because `record_keydown_time` is an internal, undocumented API, it may change without notice if TypingClub updates their application code.
+</Note>
+
+## Async typing loop
+
+`autoPlay()` orchestrates the main typing sequence:
+
+```javascript
+async function autoPlay() {
+  const chrs = getTargetCharacters();
+  if (chrs.length === 0) {
+    goToNextLevel();
+    return;
+  }
+
+  for (let i = 0; i < chrs.length; ++i) {
+    const c = chrs[i];
+    recordKey(c);
+    await sleep(Math.random() * (maxDelay - minDelay) + minDelay);
+  }
+
+  goToNextLevel();
+}
+```
+
+For each character in the array, the function:
+
+1. Calls `recordKey(c)` to register the keystroke.
+2. `await`s a randomized sleep: `Math.random() * (maxDelay - minDelay) + minDelay` milliseconds. With the default values of `minDelay = 60` and `maxDelay = 60`, this always resolves to exactly 60 ms.
+
+If the character array is empty (a level with no typeable content), the function skips the loop and jumps straight to `goToNextLevel()`.
+
+## Auto level advancement
+
+Once typing finishes, `goToNextLevel()` handles navigation:
+
+```javascript
+function goToNextLevel() {
+  setTimeout(async () => {
+    const nextButton = Array.from(document.querySelectorAll('span')).find(
+      el => el.textContent === '→'
+    );
+    if (nextButton) {
+      nextButton.click();
+      console.log('Moving to next level...');
+      await sleep(1000);
+      autoPlay();
+    } else {
+      console.log('Next level button not found.');
+    }
+  }, 2000);
+}
+```
+
+The outer `setTimeout` with a 2-second delay gives TypingClub time to display the results screen before the bot tries to click away from it. Inside the callback:
+
+- All `<span>` elements are scanned for one whose text content is exactly `→`.
+- If found, `.click()` is called on it to navigate to the next level.
+- A 1-second `sleep` allows the new level's DOM to load before `autoPlay()` is called again.
+- If no button is found, a message is logged and execution stops.
+
+<Note>
+  The `→` arrow is matched as a literal text string. If TypingClub ever changes the button's text content or replaces it with an SVG icon, the selector will stop working.
+</Note>
+
+## Execution flow
+
+The script ends with a bare call to `autoPlay()`, which kicks off the entire cycle:
+
+```javascript
+autoPlay();
+```
+
+<Steps>
+  <Step title="Initial call">
+    `autoPlay()` is invoked immediately when the script is pasted into the console.
+  </Step>
+  <Step title="Character extraction">
+    `getTargetCharacters()` queries the DOM for `.token span.token_unit` elements and returns an array of normalized characters.
+  </Step>
+  <Step title="Empty-level check">
+    If the array is empty, `goToNextLevel()` is called directly and the loop is skipped.
+  </Step>
+  <Step title="Typing loop">
+    For each character, `recordKey(c)` injects the keystroke via `window.core.record_keydown_time`, followed by a randomized `sleep`.
+  </Step>
+  <Step title="Level advancement trigger">
+    After the loop completes, `goToNextLevel()` is called. A 2-second `setTimeout` fires.
+  </Step>
+  <Step title="Next button click">
+    The `→` span is located and clicked, navigating to the next level.
+  </Step>
+  <Step title="Page load wait">
+    A 1-second `sleep` waits for the next level's DOM to be ready.
+  </Step>
+  <Step title="Recursion">
+    `autoPlay()` is called again, returning to step 2. This cycle repeats until no `→` button can be found.
+  </Step>
+</Steps>

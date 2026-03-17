@@ -1,0 +1,83 @@
+---
+title: "Introduction"
+description: "Learn what Typing Club Bot is, how it works, and whether it's the right tool for you."
+---
+
+Typing Club Bot is a JavaScript snippet you paste into your browser's developer console on [typingclub.com](https://www.typingclub.com). It reads the current lesson, types every character automatically, and then advances to the next level — repeating the cycle until all levels are complete.
+
+No installation, no browser extension, no external dependencies. The entire bot is 83 lines of plain JavaScript.
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Be up and running in under 2 minutes
+  </Card>
+  <Card title="How it works" icon="gears" href="/usage/how-it-works">
+    Understand the automation mechanics under the hood
+  </Card>
+  <Card title="Configuration" icon="sliders" href="/usage/configuration">
+    Tune typing speed and customize behavior
+  </Card>
+  <Card title="Troubleshooting" icon="wrench" href="/reference/troubleshooting">
+    Fix common issues and edge cases
+  </Card>
+</CardGroup>
+
+## What it does
+
+When you paste the script and press Enter, it:
+
+1. Queries the DOM for every character in the current lesson using `.token span.token_unit` elements
+2. Maps special cases — ENTER keys and non-breaking spaces — to their correct values
+3. Sends each character to TypingClub's internal `window.core.record_keydown_time()` API with a randomized delay between keystrokes
+4. After the lesson ends, waits 2 seconds, then finds and clicks the `→` navigation button
+5. Waits 1 second for the next level to load, then calls itself again
+
+This loop continues automatically until there are no more levels to advance to.
+
+## Who it's for
+
+Typing Club Bot is useful if you:
+
+- Need to complete TypingClub assignments quickly and want to skip manual practice
+- Are evaluating which levels to focus on and want to unlock later content first
+- Want to automate repetitive coursework that doesn't require genuine skill development
+
+<Info>
+  The bot was originally created by [Domiii](https://gist.github.com/Domiii/52cf49d780ec8c9f01771973c36197af). This project builds on that foundation.
+</Info>
+
+## How it works
+
+### Browser console injection
+
+The script runs entirely inside the browser's JavaScript environment — the same context as the TypingClub web app itself. This means it has full access to the page's DOM and all JavaScript globals, including internal APIs that the site uses for its own logic.
+
+### DOM querying
+
+The bot identifies characters to type by querying `document.querySelectorAll('.token span.token_unit')`. Each element in this list represents one character in the lesson. The bot reads the text content of each element (or detects the special `_enter` class for the Enter key) to build an ordered list of keystrokes.
+
+### Internal API calls
+
+Rather than simulating real keyboard events — which TypingClub would likely ignore or mishandle — the bot calls `window.core.record_keydown_time(chr)` directly. This is the same function the site calls when a real user presses a key. Calling it directly ensures the site registers each keystroke exactly as if it came from a physical keyboard, including accurate timing data for scoring.
+
+### Randomized timing
+
+The delay between each keystroke is randomized between `minDelay` and `maxDelay` (both set to `60` ms by default). This randomization prevents the timing from looking perfectly mechanical, and the specific range is calibrated to avoid a known bug where TypingClub fails to display the results page if keystrokes arrive too quickly.
+
+## Prerequisites
+
+Before running the bot, make sure you have:
+
+- **A typingclub.com account** — you need to be signed in and on an active lesson page
+- **A modern browser with developer tools** — Chrome, Firefox, Edge, or Safari all work
+- **The browser tab visible and active** — TypingClub requires the page to remain focused to register input
+
+<Note>
+  The bot does not require Node.js, npm, or any local development environment. It runs entirely in the browser.
+</Note>
+
+<Warning>
+  Do not modify `minDelay` or `maxDelay` in the script. If the delay is too low, TypingClub will not display the results page at the end of a lesson, which breaks the auto-advance flow. The default value of `60` ms is the safe minimum.
+</Warning>
+
+Ready to try it? Head to the [Quickstart](/quickstart) to get the bot running in under 2 minutes.

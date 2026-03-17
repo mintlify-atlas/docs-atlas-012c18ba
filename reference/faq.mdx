@@ -1,0 +1,125 @@
+---
+title: FAQ
+description: Frequently asked questions about TypingClub Bot — how it works, what it supports, and how to configure it.
+---
+
+<AccordionGroup>
+  <Accordion title="Does this work on all browsers?">
+    Yes. Any browser that exposes a JavaScript console will work — Chrome, Firefox, Safari, and Edge are all supported. The only requirement is access to the browser's DevTools console so you can paste and run the script.
+
+    To open the console:
+    - **Chrome / Edge**: `F12` or `Ctrl+Shift+J` (Windows/Linux), `Cmd+Option+J` (macOS)
+    - **Firefox**: `F12` or `Ctrl+Shift+K`
+    - **Safari**: Enable the Develop menu in settings, then `Cmd+Option+C`
+  </Accordion>
+
+  <Accordion title="Will TypingClub detect the bot?">
+    The script does not simulate browser-level keyboard events. Instead, it calls TypingClub's own internal API directly:
+
+    ```javascript
+    function recordKey(chr) {
+      // send it straight to the internal API
+      window.core.record_keydown_time(chr);
+    }
+    ```
+
+    Because input goes through the same code path as real keystrokes, TypingClub cannot distinguish bot input from human input at the application level.
+
+    The randomised delay between keystrokes also keeps the apparent typing speed within a plausible human range:
+
+    ```javascript
+    await sleep(Math.random() * (maxDelay - minDelay) + minDelay);
+    ```
+
+    <Note>Nothing here constitutes a guarantee. Site behaviour may change with future TypingClub updates.</Note>
+  </Accordion>
+
+  <Accordion title="Why does it stop before finishing all levels?">
+    After each lesson completes, `goToNextLevel()` searches for the navigation arrow:
+
+    ```javascript
+    const nextButton = Array.from(document.querySelectorAll('span')).find(
+      el => el.textContent === '→'
+    );
+    ```
+
+    If the current lesson type is a video, an assessment, or any exercise that renders a different post-lesson UI, the `→` span will not be found and the bot stops. The console will log:
+
+    ```
+    Next level button not found.
+    ```
+
+    In that case, manually advance to the next text-typing lesson and re-run `autoPlay()` in the console.
+  </Accordion>
+
+  <Accordion title="Can I change the typing speed?">
+    Yes. Edit `minDelay` and `maxDelay` at the top of the script before pasting it into the console:
+
+    ```javascript
+    const minDelay = 60;
+    const maxDelay = 60;
+    ```
+
+    Both values are in milliseconds. A random delay between the two is chosen for each keystroke:
+
+    ```javascript
+    await sleep(Math.random() * (maxDelay - minDelay) + minDelay);
+    ```
+
+    Setting `minDelay === maxDelay` produces a perfectly constant typing speed. Increasing the gap introduces more variation.
+
+    <Warning>Do not set `minDelay` below approximately 60 ms. If keystrokes arrive too quickly, TypingClub may not finish processing them and the result/score screen will never appear.</Warning>
+  </Accordion>
+
+  <Accordion title="Does it handle special keys like ENTER?">
+    Yes. `getTargetCharacters()` inspects each letter element's DOM before extracting the character:
+
+    ```javascript
+    if (el.firstChild?.classList?.contains('_enter')) {
+      // special case: ENTER
+      return '\n';
+    }
+    ```
+
+    When the `_enter` CSS class is detected, `\n` is returned instead of the visible text content, ensuring the correct keystroke is sent to `window.core.record_keydown_time()`.
+  </Accordion>
+
+  <Accordion title="What happens with non-breaking spaces?">
+    TypingClub occasionally uses non-breaking spaces (Unicode code point 160) in lesson text. The `keyOverrides` map converts them to regular spaces before any keystroke is recorded:
+
+    ```javascript
+    const keyOverrides = {
+      [String.fromCharCode(160)]: ' '    // convert hardspace to normal space
+    };
+    ```
+
+    The conversion is applied to every character returned by `getTargetCharacters()`:
+
+    ```javascript
+    .map(c => keyOverrides.hasOwnProperty(c) ? keyOverrides[c] : c);
+    ```
+
+    This prevents silent failures where the wrong character code would be sent to the API.
+  </Accordion>
+
+  <Accordion title="Can I run it on a specific level rather than all levels?">
+    Yes. The bot always starts from whatever lesson is currently displayed in the browser tab. To target a specific level:
+
+    1. Navigate to that level on TypingClub.
+    2. Wait for the lesson UI to fully load.
+    3. Open the console, paste the script, and press **Enter**.
+
+    `autoPlay()` will type through the current lesson and then continue advancing automatically. If you only want to complete one level, refresh the page before the bot clicks the next-level button, or close the console tab after the lesson finishes.
+  </Accordion>
+
+  <Accordion title="Does it work on school or enterprise TypingClub accounts?">
+    It should work on any TypingClub instance — including school and enterprise accounts — provided the instance uses the same DOM structure and exposes the `window.core` API.
+
+    The two dependencies are:
+
+    - **DOM selector**: `.token span.token_unit` — used by `getTargetCharacters()` to read lesson characters.
+    - **Internal API**: `window.core.record_keydown_time()` — used by `recordKey()` to submit keystrokes.
+
+    <Note>If a school or enterprise account runs a customised or older version of TypingClub, the DOM structure or internal API may differ. See the [Troubleshooting](/reference/troubleshooting) page if the script does not behave as expected.</Note>
+  </Accordion>
+</AccordionGroup>
